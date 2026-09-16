@@ -67,6 +67,8 @@ def _title_cues(transcript: tx.Transcript, edit: EditPlan, s: dict, workdir: str
             progress("fetching b-roll", i / max(len(titles), 1))
         if provider != "none":
             t.image = broll.fetch_image(t.prompt or "", t.search or t.text.replace("\n", " "), i, Path(workdir) / "broll", provider, portrait, s.get("broll_dir"))
+    if broll.LAST_ERRORS:
+        s["broll_errors"] = broll.LAST_ERRORS[-10:]
     return titles
 
 

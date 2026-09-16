@@ -25,7 +25,7 @@ _STOP = set(
 
 _PROMPT = """Você é editor de Reels. Abaixo está a transcrição de uma fala.
 Escolha até {n} expressões curtas (1 a 3 palavras, copiadas EXATAMENTE como aparecem no texto, na mesma ordem em que são ditas, bem espaçadas ao longo da fala) que merecem virar um título grande na tela — ideias-chave, substantivos fortes, contrastes.
-Para cada uma escreva (a) um prompt de imagem em inglês para b-roll: preto e branco, estilo colagem editorial de jornal, cinematográfico, dramático, sem texto nem letras na imagem; e (b) "search": 2 ou 3 palavras em inglês, concretas e visuais, para buscar uma foto de banco de imagens (ex.: "burger fries", "city skyline night").
+Para cada uma escreva (a) um prompt de imagem em inglês para b-roll: uma metáfora visual CONCRETA da expressão (um objeto, lugar ou cena literal — ex.: hambúrguer e batata frita para "prazer imediato", uma pessoa correndo ao amanhecer para "qualidade de vida", o Congresso para "política"), em preto e branco, estilo colagem editorial de jornal rasgado, cinematográfico, dramático, sem rostos em close, sem texto nem letras na imagem; e (b) "search": 2 ou 3 palavras em inglês, concretas e visuais, para buscar uma foto de banco de imagens (ex.: "burger fries", "city skyline night").
 Responda SOMENTE um JSON array: [{{"phrase": "...", "image_prompt": "...", "search": "..."}}]
 
 Transcrição:

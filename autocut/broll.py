@@ -136,6 +136,9 @@ def _local(index: int, broll_dir: str) -> str | None:
     return str(files[index - 1]) if 0 < index <= len(files) else None
 
 
+LAST_ERRORS: list[str] = []  # human-readable reasons for missing images (surfaced in plan.json)
+
+
 def fetch_image(prompt: str, phrase: str, index: int, out_dir: str | Path, provider: str, portrait: bool = True, broll_dir: str | None = None) -> str | None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +146,14 @@ def fetch_image(prompt: str, phrase: str, index: int, out_dir: str | Path, provi
     if out.exists():
         return str(out)
     try:
+        return _fetch(prompt, phrase, index, out, provider, portrait, broll_dir)
+    except Exception as exc:  # noqa: BLE001
+        LAST_ERRORS.append(f"{provider} #{index}: {str(exc)[:200]}")
+        return None
+
+
+def _fetch(prompt: str, phrase: str, index: int, out: Path, provider: str, portrait: bool, broll_dir: str | None) -> str | None:
+    if True:
         if provider == "openai":
             return _openai(prompt or phrase, portrait, out)
         if provider == "fal":
@@ -153,6 +164,4 @@ def fetch_image(prompt: str, phrase: str, index: int, out_dir: str | Path, provi
             return _openverse(phrase, portrait, out.with_suffix(".jpg"))
         if provider == "local" and broll_dir:
             return _local(index, broll_dir)
-    except Exception:
-        return None
     return None

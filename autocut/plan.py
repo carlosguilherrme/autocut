@@ -431,8 +431,9 @@ def _norm(t: str) -> str:
     return _clean_word(t, True)
 
 
-def _find_phrase(words: list[Word], phrase: str, after: float = 0.0) -> tuple[float, float] | None:
-    """Locate `phrase` (1..4 words) in the word list; returns (start, end) source times."""
+def _find_phrase(words: list[Word], phrase: str, after: float = 0.0) -> tuple[float, float, bool] | None:
+    """Locate `phrase` (1..4 words) in the word list.
+    Returns (start, end, exact); exact=False means only the first word was found."""
     target = [_norm(t) for t in phrase.split() if _norm(t)]
     if not target:
         return None
@@ -442,11 +443,10 @@ def _find_phrase(words: list[Word], phrase: str, after: float = 0.0) -> tuple[fl
         if words[i].start < after:
             continue
         if toks[i : i + n] == target:
-            return words[i].start, words[i + n - 1].end
-    # fallback: first word only
-    for i, t in enumerate(toks):
+            return words[i].start, words[i + n - 1].end, True
+    for i, t in enumerate(toks):  # fallback: first word only
         if t == target[0] and words[i].start >= after:
-            return words[i].start, words[i].end
+            return words[i].start, words[i].end, False
     return None
 
 
@@ -466,7 +466,9 @@ def place_titles(
         phrase = str(kw.get("phrase", "")).strip()
         loc = _find_phrase(words, phrase)
         if loc and _segment_index(plan, loc[0]) >= 0:
-            found.append((loc[0], phrase, kw))
+            # the LLM sometimes "improves" the phrase; if it is not said verbatim, show only the word that was
+            shown = phrase if loc[2] else phrase.split()[0]
+            found.append((loc[0], shown, kw))
     found.sort(key=lambda f: f[0])
 
     titles: list[Cue] = []
