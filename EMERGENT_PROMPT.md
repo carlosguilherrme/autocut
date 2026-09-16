@@ -73,7 +73,7 @@ Tela única, fundo escuro, acento roxo, sem enfeite:
 
 ## 4. Testes de aceite
 
-- Enviar um `.mov` vertical de 1 min falado em português → volta 9:16, com legendas em frases de 1–2 linhas, cortes nas pausas e 1,2x nos blocos longos; o `.srt` também baixa.
+- Enviar um `.mov` vertical de 1 min falado em português → volta 9:16, em preto e branco, com legenda palavra por palavra, cards de título com imagem, cortes nas pausas e 1,2x nos blocos longos; o `.srt` também baixa.
 - Enviar um `.mp4` 16:9 → volta 16:9.
 - Trocar a velocidade de um trecho para 1x e re-renderizar → legendas seguem no lugar certo.
 - Sem chave de transcrição → job termina em `error` com mensagem clara (não trava a fila).
