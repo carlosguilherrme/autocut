@@ -1,6 +1,6 @@
 # Prompt para colar no Emergent
 
-> Antes de colar: dê push deste repositório no GitHub (público) e troque `SEU_USUARIO` pela URL real. Depois de o app subir, cadastre `GROQ_API_KEY` (ou `OPENAI_API_KEY`) nas variáveis de ambiente do backend.
+> Repositório público já no ar em `https://github.com/carlosguilherrme/autocut`. Depois de o app subir, cadastre `GROQ_API_KEY` (ou `OPENAI_API_KEY`) nas variáveis de ambiente do backend.
 
 ---
 
@@ -8,12 +8,12 @@ Quero um app web chamado **AutoCut**: eu envio um vídeo (vlog do YouTube ou Ree
 
 ## 1. Motor pronto (usar como está)
 
-Repositório: `https://github.com/SEU_USUARIO/autocut`
+Repositório: `https://github.com/carlosguilherrme/autocut`
 
 Instale no backend com:
 
 ```
-pip install "git+https://github.com/SEU_USUARIO/autocut.git"
+pip install "git+https://github.com/carlosguilherrme/autocut.git"
 ```
 
 (ou copie a pasta `autocut/` do repositório para `/app/backend/autocut/`). Dependências dele: `imageio-ffmpeg` (traz um binário ffmpeg com libass, não precisa de `apt-get`) e `requests`. **Não instale `faster-whisper` nem `torch`** neste ambiente — a transcrição aqui é por API.
