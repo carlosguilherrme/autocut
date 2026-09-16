@@ -1,0 +1,27 @@
+[project]
+name = "autocut"
+version = "0.1.0"
+description = "Auto-edit vlogs and reels: silence cuts, speed-ups, burned subtitles (ffmpeg + whisper)."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+local = ["faster-whisper>=1.1"]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
+
+[project.scripts]
+autocut = "autocut.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["autocut"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+autocut = ["fonts/*"]

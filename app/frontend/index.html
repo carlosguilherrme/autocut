@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoCut</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262a33; --text:#e8eaf0; --muted:#8b93a7; --accent:#7c5cff; --ok:#3ddc84; --err:#ff5c5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,Inter,Segoe UI,Roboto,sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:32px 16px 80px; }
+  h1 { font-size:28px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  select, input[type=number] { background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:end; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; }
+  .drop.over { border-color:var(--accent); color:var(--text); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
+  button:disabled { opacity:.5; cursor:default; }
+  .bar { height:8px; background:#0f1115; border-radius:99px; overflow:hidden; margin-top:8px; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .4s; }
+  .stat { display:inline-block; margin-right:16px; color:var(--muted); font-size:13px; }
+  .stat b { color:var(--text); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:99px; border:1px solid var(--line); cursor:pointer; margin-right:4px; font-size:12px; }
+  .chip.on { background:var(--accent); border-color:var(--accent); }
+  .err { color:var(--err); } .ok { color:var(--ok); }
+  video { width:100%; max-height:70vh; background:#000; border-radius:12px; }
+  .jobs a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>AutoCut</h1>
+  <p class="sub">Manda o vídeo. Volta cortado, no 1,2x e legendado.</p>
+
+  <div class="card">
+    <div id="drop" class="drop">Arraste o vídeo aqui ou clique para escolher<br><small>mp4, mov, mkv, webm</small></div>
+    <input id="file" type="file" accept="video/*" hidden>
+    <div class="row" style="margin-top:16px">
+      <div><label>Preset</label>
+        <select id="preset">
+          <option value="auto">Auto (pelo formato do vídeo)</option>
+          <option value="reels">Reels 9:16</option>
+          <option value="youtube">YouTube 16:9</option>
+          <option value="reels-fast">Reels 9:16 — tudo 1,2x</option>
+          <option value="youtube-fast">YouTube 16:9 — tudo 1,2x</option>
+        </select></div>
+      <div><label>Velocidade</label><input id="speed" type="number" step="0.05" min="1" max="2" value="1.2" style="width:90px"></div>
+      <div><label>Acelerar</label>
+        <select id="speedmode"><option value="">padrão do preset</option><option value="long">só trechos longos</option><option value="all">tudo</option><option value="none">nada</option></select></div>
+      <div><label>Corte de silêncio (s)</label><input id="minsil" type="number" step="0.05" min="0.2" max="2" value="0.45" style="width:90px"></div>
+      <div><label>Legenda</label>
+        <select id="style"><option value="classic">clássica</option><option value="box">caixa</option><option value="yellow">amarela</option></select></div>
+      <div><button id="go" disabled>Editar</button></div>
+    </div>
+    <div id="picked" class="stat"></div>
+  </div>
+
+  <div id="job" class="card" hidden>
+    <div id="status"></div>
+    <div class="bar"><i id="prog"></i></div>
+    <div id="stats" style="margin-top:10px"></div>
+    <div id="result" hidden>
+      <video id="video" controls playsinline></video>
+      <p><a id="dl" class="chip on" download>Baixar MP4</a> <a id="srt" class="chip">Baixar SRT</a></p>
+      <h3 style="margin:16px 0 8px">Trechos (ajuste a velocidade e re-renderize)</h3>
+      <table><thead><tr><th>#</th><th>Origem</th><th>Duração</th><th>Velocidade</th><th>Manter</th></tr></thead><tbody id="segs"></tbody></table>
+      <p><button id="rerender">Re-renderizar</button></p>
+    </div>
+  </div>
+
+  <div class="card jobs"><b>Últimos jobs</b><div id="jobs"></div></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let picked = null, current = null, timer = null;
+const drop = $('#drop'), fileIn = $('#file');
+drop.onclick = () => fileIn.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+fileIn.onchange = () => pick(fileIn.files[0]);
+function pick(f){ if(!f) return; picked = f; $('#picked').innerHTML = `<b>${f.name}</b> · ${(f.size/1e6).toFixed(1)} MB`; $('#go').disabled = false; }
+
+$('#go').onclick = async () => {
+  const fd = new FormData();
+  fd.append('file', picked);
+  fd.append('preset', $('#preset').value);
+  const ov = { speed: parseFloat($('#speed').value), min_silence: parseFloat($('#minsil').value), subtitle_style: $('#style').value };
+  if ($('#speedmode').value) ov.speed_mode = $('#speedmode').value;
+  fd.append('overrides', JSON.stringify(ov));
+  $('#go').disabled = true;
+  const r = await fetch('/api/jobs', { method:'POST', body: fd });
+  const job = await r.json();
+  if (!r.ok) { alert(job.detail || 'erro'); $('#go').disabled = false; return; }
+  watch(job.id);
+};
+
+function watch(id){ current = id; $('#job').hidden = false; $('#result').hidden = true; clearInterval(timer); poll(); timer = setInterval(poll, 1500); }
+async function poll(){
+  const job = await (await fetch('/api/jobs/'+current)).json();
+  const pt = { queued:'na fila', transcribing:'transcrevendo', planning:'planejando cortes', rendering:'renderizando', done:'pronto', error:'erro' }[job.status] || job.status;
+  $('#status').innerHTML = `<b>${job.original_name}</b> — ${pt} ${job.stage && job.status!=='done' ? '('+job.stage+')' : ''}` + (job.error ? `<div class="err">${job.error}</div>` : '');
+  $('#prog').style.width = Math.round((job.progress||0)*100) + '%';
+  if (job.status === 'done') {
+    clearInterval(timer); $('#go').disabled = false;
+    const s = job.stats || {};
+    $('#stats').innerHTML = `<span class="stat">cortes <b>${s.cuts}</b></span><span class="stat">removido <b>${s.removed_seconds}s</b></span><span class="stat">saída <b>${s.output_seconds}s</b></span><span class="stat">trechos 1,2x <b>${s.sped_up_segments}</b></span><span class="stat">legendas <b>${s.cues}</b></span>`;
+    $('#video').src = `/api/jobs/${job.id}/preview?t=${Date.now()}`;
+    $('#dl').href = job.download_url; $('#srt').href = job.srt_url || '#';
+    renderSegs(job.plan);
+    $('#result').hidden = false;
+    loadJobs();
+  } else if (job.status === 'error') { clearInterval(timer); $('#go').disabled = false; loadJobs(); }
+}
+function fmt(t){ return `${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`; }
+function renderSegs(plan){
+  const tb = $('#segs'); tb.innerHTML = '';
+  (plan?.segments||[]).forEach((s,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${fmt(s.src_start)} → ${fmt(s.src_end)}</td><td>${(s.src_end-s.src_start).toFixed(1)}s</td>
+      <td>${[1,1.2,1.5].map(v=>`<span class="chip ${Math.abs(s.speed-v)<0.01?'on':''}" data-i="${i}" data-speed="${v}">${v}x</span>`).join('')}</td>
+      <td><input type="checkbox" data-i="${i}" data-en ${s.enabled?'checked':''}></td>`;
+    tb.appendChild(tr);
+  });
+}
+$('#rerender').onclick = async () => {
+  const segments = [];
+  document.querySelectorAll('#segs tr').forEach((tr,i) => {
+    const on = tr.querySelector('.chip.on'); const en = tr.querySelector('input[data-en]');
+    segments.push({ index:i, speed: on ? parseFloat(on.dataset.speed) : 1, enabled: en.checked });
+  });
+  await fetch(`/api/jobs/${current}/plan`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ segments }) });
+  await fetch(`/api/jobs/${current}/render`, { method:'POST' });
+  watch(current);
+};
+document.addEventListener('click', e => {
+  const c = e.target.closest('.chip[data-speed]'); if (!c) return;
+  c.parentElement.querySelectorAll('.chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
+});
+async function loadJobs(){
+  const jobs = await (await fetch('/api/jobs')).json();
+  $('#jobs').innerHTML = jobs.slice(0,10).map(j => `<div><a href="#" data-job="${j.id}">${j.original_name}</a> · ${j.status} · ${new Date(j.created_at*1000).toLocaleString('pt-BR')}</div>`).join('') || '<div class="stat">nenhum ainda</div>';
+  $('#jobs').querySelectorAll('a[data-job]').forEach(a => a.onclick = e => { e.preventDefault(); watch(a.dataset.job); });
+}
+loadJobs();
+</script>
+</body>
+</html>

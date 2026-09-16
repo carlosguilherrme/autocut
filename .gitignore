@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+work/
+data/
+samples/
+*.mp4
+*.mov
+*.MOV
+*.wav
+*.mp3
+*.srt
+.DS_Store
+*.egg-info/
