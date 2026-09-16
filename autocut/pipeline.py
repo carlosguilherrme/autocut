@@ -8,9 +8,10 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from . import broll, keywords
 from . import plan as planmod
 from . import speech, subtitles, transcribe as tx
-from .plan import EditPlan
+from .plan import Cue, EditPlan
 from .presets import resolve_settings
 from .probe import MediaInfo, probe
 from .render import render
@@ -26,6 +27,61 @@ def _scaled(progress: ProgressFn | None, lo: float, hi: float) -> ProgressFn | N
         progress(stage, lo + (hi - lo) * max(0.0, min(frac, 1.0)))
 
     return fn
+
+
+# --------------------------------------------------------------------------- captions
+
+
+def _caption_cues(transcript: tx.Transcript, edit: EditPlan, s: dict) -> list[Cue]:
+    if not s.get("subtitles"):
+        return []
+    if s.get("caption_mode", "word") == "word":
+        return planmod.build_word_cues(transcript.words, edit, lower=s.get("word_case", "lower") == "lower")
+    return planmod.build_cues(
+        transcript.words, edit, transcript.segments,
+        max_chars=int(s["max_chars"]), uppercase=bool(s.get("uppercase")),
+    )
+
+
+def _title_cues(transcript: tx.Transcript, edit: EditPlan, s: dict, workdir: str, progress: ProgressFn | None) -> list[Cue]:
+    if not s.get("titles"):
+        return []
+    if progress:
+        progress("picking titles", 0.0)
+    kws, used = keywords.pick_keywords(
+        transcript.text, transcript.segments, n=int(s.get("titles_max", 4)), backend=s.get("keyword_backend", "auto")
+    )
+    s["keyword_backend_used"] = used
+    s["keywords_picked"] = kws
+    titles = planmod.place_titles(
+        kws, transcript.words, edit,
+        duration=float(s.get("title_duration", 3.0)),
+        line_chars=int(s.get("title_line_chars", 13)),
+        lower=s.get("word_case", "lower") == "lower",
+    )
+    provider = broll.resolve_provider(s.get("broll", "auto"), s.get("broll_dir"))
+    s["broll_provider_used"] = provider
+    portrait = int(s["height"]) > int(s["width"])
+    for i, t in enumerate(titles, 1):
+        if progress:
+            progress("fetching b-roll", i / max(len(titles), 1))
+        if provider != "none":
+            t.image = broll.fetch_image(t.prompt or "", t.search or t.text.replace("\n", " "), i, Path(workdir) / "broll", provider, portrait, s.get("broll_dir"))
+    return titles
+
+
+def _color_pops(edit: EditPlan, s: dict) -> list[tuple[float, float]]:
+    """Brief colour windows: the opening beat and the moment before each title card."""
+    if s.get("grade") != "bw" or not s.get("color_pops"):
+        return []
+    pops = [(0.0, min(1.0, edit.out_duration()))]
+    for c in edit.cues:
+        if c.style == "Title" and not c.image:
+            pops.append((max(c.start - 0.7, 0.0), c.start))
+    return pops
+
+
+# --------------------------------------------------------------------------- plan
 
 
 def make_plan(
@@ -49,12 +105,12 @@ def make_plan(
             backend=settings["transcribe_backend"],
             language=settings.get("language") or None,
             model=settings["whisper_model"],
-            progress=_scaled(progress, 0.05, 0.75),
+            progress=_scaled(progress, 0.05, 0.65),
         )
         transcript.save(Path(workdir) / "transcript.json")
 
     if progress:
-        progress("planning", 0.78)
+        progress("planning", 0.66)
     wav = Path(workdir) / "audio.wav"
     regions = speech.speech_regions(
         transcript.words,
@@ -79,15 +135,15 @@ def make_plan(
         planmod.apply_punch_in(segments)
 
     edit = EditPlan(source=os.path.abspath(input_path), source_duration=info.duration, fps=info.fps, segments=segments, settings=settings)
-    if settings.get("subtitles"):
-        edit.cues = planmod.build_cues(
-            transcript.words, edit, transcript.segments,
-            max_chars=int(settings["max_chars"]), uppercase=bool(settings.get("uppercase")),
-        )
+    edit.cues = _caption_cues(transcript, edit, settings)
+    edit.cues += _title_cues(transcript, edit, settings, workdir, _scaled(progress, 0.68, 0.78))
     edit.save(Path(workdir) / "plan.json")
     if progress:
         progress("planned", 0.8)
     return edit, transcript, info
+
+
+# --------------------------------------------------------------------------- render
 
 
 def render_plan(
@@ -99,39 +155,34 @@ def render_plan(
     progress: ProgressFn | None = None,
     prefer_hw: bool = True,
 ) -> str:
-    """Render a (possibly user-edited) plan. Cues are rebuilt when a transcript is given,
-    so edited speeds/segments keep subtitles in sync."""
+    """Render a (possibly user-edited) plan. Captions are rebuilt from the transcript and
+    title cards follow their spoken anchor, so edited speeds/segments stay in sync."""
     os.makedirs(workdir, exist_ok=True)
     s = edit.settings
     info = info or probe(edit.source)
     if transcript is None and (Path(workdir) / "transcript.json").exists():
         transcript = tx.Transcript.load(Path(workdir) / "transcript.json")
-    if transcript is not None and s.get("subtitles"):
-        edit.cues = planmod.build_cues(
-            transcript.words, edit, transcript.segments,
-            max_chars=int(s["max_chars"]), uppercase=bool(s.get("uppercase")),
-        )
+    titles = [c for c in edit.cues if c.style == "Title"]
+    if transcript is not None:
+        edit.cues = _caption_cues(transcript, edit, s)
+    else:
+        edit.cues = [c for c in edit.cues if c.style != "Title"]
+    edit.cues += planmod.remap_titles(titles, edit, duration=float(s.get("title_duration", 3.0)))
     edit.save(Path(workdir) / "plan.json")
 
     subs_path = None
-    if s.get("subtitles") and edit.cues:
-        subs_path = subtitles.write_ass(
-            edit.cues,
-            Path(workdir) / "subs.ass",
-            s["width"], s["height"],
-            font=s.get("font", "Inter"),
-            font_size=int(s["font_size"]),
-            margin_v=int(s["margin_v"]),
-            margin_h=int(s["margin_h"]),
-            style=s.get("subtitle_style", "classic"),
-        )
+    if edit.cues:
+        subs_path = subtitles.write_ass(edit.cues, Path(workdir) / "subs.ass", int(s["width"]), int(s["height"]), s)
         subtitles.write_srt(edit.cues, Path(output_path).with_suffix(".srt"))
 
+    broll_images = [(c.image, c.start, c.end) for c in edit.cues if c.style == "Title" and c.image]
     return render(
         edit, info, output_path, workdir,
         width=int(s["width"]), height=int(s["height"]), fit=s.get("fit", "blur"),
         subs_path=subs_path, normalize_audio=bool(s.get("normalize_audio", True)),
         progress=_scaled(progress, 0.8, 1.0), prefer_hw=prefer_hw,
+        grade=s.get("grade", "none"), color_pops=_color_pops(edit, s),
+        broll_images=broll_images, fade_out=float(s.get("fade_out", 0.0) or 0.0),
     )
 
 

@@ -262,7 +262,8 @@ def update_plan(job_id: str, patch: PlanPatch) -> dict:
             seg.enabled = bool(sp.enabled)
         if sp.zoom is not None:
             seg.zoom = max(1.0, min(float(sp.zoom), 2.0))
-    allowed = {"subtitle_style", "uppercase", "font_size", "margin_v", "max_chars", "normalize_audio", "fit", "subtitles", "font"}
+    allowed = {"subtitle_style", "uppercase", "font_size", "margin_v", "max_chars", "normalize_audio", "fit", "subtitles", "font",
+               "caption_mode", "word_case", "word_size", "word_y", "grade", "color_pops", "fade_out", "title_duration", "title_size", "title_y"}
     for k, v in patch.settings.items():
         if k in allowed:
             plan.settings[k] = v

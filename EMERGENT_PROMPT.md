@@ -38,11 +38,15 @@ pipeline.render_plan(plan, output_mp4, work_dir, transcript=Transcript.load(f"{w
 
 `workdir` fica com `plan.json` (trechos, velocidades, legendas, stats), `transcript.json` e `subs.ass`; o `.srt` sai ao lado do mp4.
 
-Presets: `auto` (escolhe 9:16 ou 16:9 pelo vídeo), `reels`, `youtube`, `reels-fast`, `youtube-fast`. Overrides aceitos (chaves de `autocut/presets.py`): `speed` (1.2), `speed_mode` (`long`|`all`|`none`), `long_threshold` (6.0), `min_silence` (0.45), `subtitle_style` (`classic`|`box`|`yellow`), `uppercase`, `fit` (`blur`|`crop`|`pad`), `aspect`, `punch_in`, `normalize_audio`, `subtitles`, `language` (`pt`).
+O visual que o motor produz (já é o padrão, não mexer): legenda **uma palavra grande de cada vez** (Poppins Bold, minúscula, branca, ~77 % da altura), vídeo em **preto e branco** com flashes coloridos curtos, **cards de título em serifa com sublinhado** nas ideias-chave (escolhidas por LLM) com **B-roll em tela cheia** (P&B, zoom lento), cortes nas pausas, 1,2x nos blocos longos, punch-in entre cortes, fade pro preto no fim.
+
+Presets: `auto` (escolhe 9:16 ou 16:9 pelo vídeo), `reels`, `youtube`, `reels-fast`, `youtube-fast`. Overrides aceitos (chaves de `autocut/presets.py`): `speed` (1.2), `speed_mode` (`long`|`all`|`none`), `long_threshold` (6.0), `min_silence` (0.45), `caption_mode` (`word`|`phrase`), `grade` (`bw`|`none`), `color_pops`, `titles`, `titles_max` (4), `broll` (`auto`|`openai`|`fal`|`pexels`|`openverse`|`none`), `fade_out` (0.6), `subtitle_style` (`classic`|`box`|`yellow`, só no modo phrase), `fit` (`blur`|`crop`|`pad`), `aspect`, `punch_in`, `normalize_audio`, `subtitles`, `language` (`pt`).
 
 Variáveis de ambiente do backend:
 
-- `TRANSCRIBE_API_KEY` ou `GROQ_API_KEY` (modelo `whisper-large-v3-turbo`, endpoint `https://api.groq.com/openai/v1`) ou `OPENAI_API_KEY` (`whisper-1`). Opcionais: `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`. Se a chave universal do Emergent cobrir `audio/transcriptions` da OpenAI, pode apontar `TRANSCRIBE_BASE_URL` para ela.
+- Transcrição: `GROQ_API_KEY` (modelo `whisper-large-v3-turbo`, endpoint `https://api.groq.com/openai/v1`) ou `OPENAI_API_KEY` (`whisper-1`). Opcionais: `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`, `TRANSCRIBE_API_KEY`.
+- Ideias-chave dos cards: `ANTHROPIC_API_KEY` (claude-haiku-4-5) ou `OPENAI_API_KEY`/`GROQ_API_KEY` (chat). Sem chave, cai numa heurística.
+- Imagens de B-roll: `OPENAI_API_KEY` (gpt-image-1, melhor fidelidade ao estilo) ou `FAL_KEY` (flux/schnell) ou `PEXELS_API_KEY` (banco de fotos). Sem nenhuma, usa Openverse (fotos CC, qualidade irregular).
 - `AUTOCUT_DATA=/app/backend/data` (pasta dos jobs em disco).
 
 ## 2. Backend (FastAPI)
@@ -61,7 +65,7 @@ Há uma implementação de referência completa em `app/backend/server.py` do re
 
 Tela única, fundo escuro, acento roxo, sem enfeite:
 
-1. **Envio**: dropzone grande (arrastar ou tocar para escolher), seletor de preset (Auto / Reels 9:16 / YouTube 16:9) e um "Avançado" recolhido com: velocidade (1,0–2,0, padrão 1,2), acelerar (só trechos longos / tudo / nada), corte de silêncio em segundos (padrão 0,45), estilo da legenda (clássica / caixa / amarela), maiúsculas. Botão **Editar**.
+1. **Envio**: dropzone grande (arrastar ou tocar para escolher), seletor de preset (Auto / Reels 9:16 / YouTube 16:9) e um "Avançado" recolhido com: velocidade (1,0–2,0, padrão 1,2), acelerar (só trechos longos / tudo / nada), corte de silêncio em segundos (padrão 0,45), legenda (palavra grande / frase embaixo), preto e branco (liga/desliga), cards de título (liga/desliga, máximo 4), B-roll (auto / sem imagem). Botão **Editar**.
 2. **Progresso**: card do job com barra e etapa em português (transcrevendo → cortando → renderizando), atualizando por polling a cada 1,5 s. Mostrar erro legível se falhar.
 3. **Resultado**: player com o vídeo final, números (cortes, segundos removidos, duração final, trechos acelerados, legendas) e botões **Baixar MP4** e **Baixar SRT**.
 4. **Ajuste fino**: tabela dos trechos (tempo de origem, duração, chips 1x / 1,2x / 1,5x, checkbox manter) e botão **Re-renderizar**. As legendas continuam sincronizadas sozinhas.

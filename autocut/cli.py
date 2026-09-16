@@ -38,9 +38,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--min-silence", type=float)
     p.add_argument("--aspect", choices=["auto", "16:9", "9:16", "1:1"])
     p.add_argument("--fit", choices=["blur", "crop", "pad"])
-    p.add_argument("--style", dest="subtitle_style", choices=["classic", "box", "yellow"])
+    p.add_argument("--captions", dest="caption_mode", choices=["word", "phrase"], help="word = one big word at a time (default)")
+    p.add_argument("--style", dest="subtitle_style", choices=["classic", "box", "yellow"], help="phrase-mode colour variant")
     p.add_argument("--uppercase", action="store_true", default=None)
     p.add_argument("--no-subs", action="store_true")
+    p.add_argument("--no-bw", action="store_true", help="keep original colours (default is black & white)")
+    p.add_argument("--no-color-pops", action="store_true")
+    p.add_argument("--no-titles", action="store_true", help="skip serif title cards")
+    p.add_argument("--titles-max", dest="titles_max", type=int)
+    p.add_argument("--keywords", dest="keyword_backend", choices=["auto", "anthropic", "openai", "claude-cli", "heuristic"])
+    p.add_argument("--broll", choices=["auto", "openai", "fal", "pexels", "openverse", "local", "none"])
+    p.add_argument("--broll-dir", dest="broll_dir", help="folder with 1.jpg, 2.jpg ... for --broll local")
+    p.add_argument("--fade-out", dest="fade_out", type=float)
     p.add_argument("--punch-in", dest="punch_in", action="store_true", default=None)
     p.add_argument("--no-punch-in", dest="punch_in", action="store_false")
     p.add_argument("--no-normalize", action="store_true")
@@ -57,13 +66,20 @@ def main(argv: list[str] | None = None) -> int:
     overrides = {
         k: getattr(a, k)
         for k in ["speed", "speed_mode", "long_threshold", "min_silence", "aspect", "fit", "subtitle_style",
-                  "uppercase", "punch_in", "language", "transcribe_backend", "whisper_model"]
+                  "uppercase", "punch_in", "language", "transcribe_backend", "whisper_model", "caption_mode",
+                  "titles_max", "keyword_backend", "broll", "broll_dir", "fade_out"]
         if getattr(a, k) is not None
     }
     if a.no_subs:
         overrides["subtitles"] = False
     if a.no_normalize:
         overrides["normalize_audio"] = False
+    if a.no_bw:
+        overrides["grade"] = "none"
+    if a.no_color_pops:
+        overrides["color_pops"] = False
+    if a.no_titles:
+        overrides["titles"] = False
 
     progress = _progress_printer()
     t0 = time.time()

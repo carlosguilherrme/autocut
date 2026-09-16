@@ -21,10 +21,25 @@ BASE: dict = {
     "punch_in": False,        # alternate subtle zoom between cuts
     # subtitles
     "subtitles": True,
-    "subtitle_style": "classic",
-    "font": "Poppins",  # bundled in autocut/fonts (OFL)
+    "caption_mode": "word",   # "word" (one big word at a time, like the reels) | "phrase" (1-2 lines bottom)
+    "subtitle_style": "classic",  # phrase mode colour variant: classic | box | yellow
+    "font": "Poppins",        # phrase font (bundled in autocut/fonts, OFL)
+    "word_font": "Poppins Bold",
+    "word_case": "lower",     # "lower" | "keep"
+    "title_font": "DM Serif Display",
     "uppercase": False,
     "language": "pt",
+    # look
+    "grade": "bw",            # "bw" (black & white like the reels) | "none"
+    "color_pops": True,       # brief colour flashes on the title moments (bw grade only)
+    "fade_out": 0.6,          # seconds of fade to black at the end (0 = off)
+    # title cards + b-roll
+    "titles": True,           # serif title cards on key phrases
+    "titles_max": 4,
+    "title_duration": 3.0,
+    "keyword_backend": "auto",  # anthropic | openai | claude-cli | heuristic | auto
+    "broll": "auto",          # image provider for title cards: auto | openai | fal | pexels | local | none
+    "broll_dir": None,        # local provider: folder with images named 1.jpg, 2.jpg ... (one per title)
     # audio
     "normalize_audio": True,
     # transcription
@@ -34,9 +49,12 @@ BASE: dict = {
 
 # per-aspect layout numbers (font size, bottom margin, chars per cue)
 LAYOUT: dict[str, dict] = {
-    "16:9": {"width": 1920, "height": 1080, "font_size": 58, "margin_v": 72, "margin_h": 120, "max_chars": 58},
-    "9:16": {"width": 1080, "height": 1920, "font_size": 84, "margin_v": 420, "margin_h": 60, "max_chars": 38},
-    "1:1": {"width": 1080, "height": 1080, "font_size": 60, "margin_v": 120, "margin_h": 70, "max_chars": 46},
+    "16:9": {"width": 1920, "height": 1080, "font_size": 58, "margin_v": 72, "margin_h": 120, "max_chars": 58,
+             "word_size": 88, "word_y": 0.82, "title_size": 104, "title_y": 0.50, "title_line_chars": 22},
+    "9:16": {"width": 1080, "height": 1920, "font_size": 84, "margin_v": 420, "margin_h": 60, "max_chars": 38,
+             "word_size": 100, "word_y": 0.77, "title_size": 118, "title_y": 0.56, "title_line_chars": 13},
+    "1:1": {"width": 1080, "height": 1080, "font_size": 60, "margin_v": 120, "margin_h": 70, "max_chars": 46,
+             "word_size": 90, "word_y": 0.80, "title_size": 108, "title_y": 0.50, "title_line_chars": 16},
 }
 
 PRESETS: dict[str, dict] = {

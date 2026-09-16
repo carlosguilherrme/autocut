@@ -42,6 +42,11 @@ class Cue:
     start: float  # output timeline
     end: float
     text: str  # may contain "\n" for a manual line break
+    style: str = "Default"  # "Default" (phrase) | "Word" (big single word) | "Title" (serif title card)
+    image: str | None = None  # Title only: optional full-screen b-roll image path
+    prompt: str | None = None  # Title only: image prompt used/suggested
+    search: str | None = None  # Title only: short English search terms for stock-photo providers
+    anchor: float | None = None  # Title only: source time the title is tied to (re-mapped on re-render)
 
 
 @dataclass
@@ -354,3 +359,143 @@ def build_cues(
     for c in cues:
         c.end = min(c.end, total)
     return [c for c in cues if c.end > c.start]
+
+
+# --------------------------------------------------------------------------- word-by-word captions
+
+_PUNCT = ",.;:!?…\"'“”«»()[]"
+
+
+def _clean_word(text: str, lower: bool) -> str:
+    t = text.strip().strip(_PUNCT).strip()
+    return t.lower() if lower else t
+
+
+def build_word_cues(
+    words: list[Word],
+    plan: EditPlan,
+    min_duration: float = 0.28,
+    hold_gap: float = 0.5,
+    tail: float = 0.25,
+    lower: bool = True,
+    merge_shorter_than: float = 0.12,
+) -> list[Cue]:
+    """One big word on screen at a time (CapCut "word by word" look).
+
+    A word stays up until the next word starts (continuous feel) unless the
+    pause is long; words shorter than `merge_shorter_than` seconds are glued
+    to the next word so the screen does not flicker.
+    """
+    kept = [w for w in words if _segment_index(plan, _mid(w)) >= 0 and _clean_word(w.text, lower)]
+    chunks: list[list[Word]] = []
+    i = 0
+    while i < len(kept):
+        grp = [kept[i]]
+        while (
+            grp[-1].end - grp[0].start < merge_shorter_than
+            and i + 1 < len(kept)
+            and kept[i + 1].start - grp[-1].end < 0.2
+            and _segment_index(plan, _mid(kept[i + 1])) == _segment_index(plan, _mid(grp[0]))
+        ):
+            i += 1
+            grp.append(kept[i])
+        chunks.append(grp)
+        i += 1
+
+    cues: list[Cue] = []
+    for k, g in enumerate(chunks):
+        start = plan.map_time_clamped(g[0].start)
+        nxt = chunks[k + 1] if k + 1 < len(chunks) else None
+        same_take = nxt is not None and _segment_index(plan, _mid(nxt[0])) == _segment_index(plan, _mid(g[-1]))
+        if nxt is not None and same_take and nxt[0].start - g[-1].end <= hold_gap:
+            end = plan.map_time_clamped(nxt[0].start) - 0.02
+        else:
+            end = plan.map_time_clamped(g[-1].end) + tail
+        end = max(end, start + min_duration)
+        text = " ".join(_clean_word(w.text, lower) for w in g).strip()
+        if text:
+            cues.append(Cue(start, end, text, style="Word"))
+    for i, c in enumerate(cues):
+        if i + 1 < len(cues):
+            c.end = min(c.end, cues[i + 1].start - 0.02)
+    total = plan.out_duration()
+    for c in cues:
+        c.end = min(c.end, total)
+    return [c for c in cues if c.end > c.start]
+
+
+# --------------------------------------------------------------------------- serif title cards
+
+
+def _norm(t: str) -> str:
+    return _clean_word(t, True)
+
+
+def _find_phrase(words: list[Word], phrase: str, after: float = 0.0) -> tuple[float, float] | None:
+    """Locate `phrase` (1..4 words) in the word list; returns (start, end) source times."""
+    target = [_norm(t) for t in phrase.split() if _norm(t)]
+    if not target:
+        return None
+    n = len(target)
+    toks = [_norm(w.text) for w in words]
+    for i in range(len(words) - n + 1):
+        if words[i].start < after:
+            continue
+        if toks[i : i + n] == target:
+            return words[i].start, words[i + n - 1].end
+    # fallback: first word only
+    for i, t in enumerate(toks):
+        if t == target[0] and words[i].start >= after:
+            return words[i].start, words[i].end
+    return None
+
+
+def place_titles(
+    keywords: list[dict],
+    words: list[Word],
+    plan: EditPlan,
+    duration: float = 3.0,
+    min_gap: float = 3.0,
+    line_chars: int = 13,
+    lower: bool = True,
+) -> list[Cue]:
+    """Turn picked keywords [{"phrase", "image_prompt"}] into Title cues on the output timeline.
+    A title starts when the phrase is spoken and stays `duration` seconds (never past its take)."""
+    found: list[tuple[float, str, dict]] = []
+    for kw in keywords:
+        phrase = str(kw.get("phrase", "")).strip()
+        loc = _find_phrase(words, phrase)
+        if loc and _segment_index(plan, loc[0]) >= 0:
+            found.append((loc[0], phrase, kw))
+    found.sort(key=lambda f: f[0])
+
+    titles: list[Cue] = []
+    last_end = -1e9
+    for src_start, phrase, kw in found:
+        start = plan.map_time_clamped(src_start)
+        if start - last_end < min_gap:
+            continue
+        end = min(start + duration, plan.out_duration())  # a card may span a cut; it is an overlay
+        if end - start < 1.2:
+            continue
+        text = phrase.lower() if lower else phrase
+        titles.append(Cue(start, end, _balance_two_lines(text, line_chars), style="Title",
+                          prompt=kw.get("image_prompt"), search=kw.get("search") or phrase, anchor=src_start))
+        last_end = end
+    return titles
+
+
+def remap_titles(titles: list[Cue], plan: EditPlan, duration: float = 3.0) -> list[Cue]:
+    """After the user edits speeds/segments, move title cards with their spoken anchor."""
+    out: list[Cue] = []
+    for t in titles:
+        if t.anchor is None:
+            out.append(t)
+            continue
+        if _segment_index(plan, t.anchor) < 0:
+            continue  # its take was disabled
+        start = plan.map_time_clamped(t.anchor)
+        end = min(start + duration, plan.out_duration())
+        if end - start >= 1.2:
+            out.append(Cue(start, end, t.text, style="Title", image=t.image, prompt=t.prompt, search=t.search, anchor=t.anchor))
+    return out
